@@ -104,27 +104,35 @@ Function Get-BitlockerEncryptionToast {
 
     [cmdletBinding()]
     Param(
-        [Parameter(Mandatory,Position=1,ValueFromPipeline,ValueFromPipelineByPropertyName)]
+        [Parameter(ValueFromPipeline,ValueFromPipelineByPropertyName)]
         [string]
         $Computername
     )
 
-    Begin { $Session = New-PSSession -ComputerName $Computername }
-
+    Begin { 
+        
+        If($Computername) {
+            $Session = New-PSSession -ComputerName $Computername 
+        }
+    }
+    
     Process {
 
-        Function Get-EncryptionPercent {
-        
-            $EncryptionPercentage = Invoke-Command -Session $Session -ScriptBlock { (Get-BitLockerVolume).EncryptionPercentage }
-
+        Function Get-Percentage {
+        If($Computername){
+        $script:EncryptionPercentage = Invoke-Command -Session $Session -ScriptBlock { (Get-BitLockerVolume).EncryptionPercentage }
         }
-        
+        Else{
+            $script:EncryptionPercentage = (Get-BitLockerVolume).EncryptionPercentage
+        }
+
+        }  
+
+
         While($EncryptionPercentage -lt 100) {
 
-           Get-EncryptionPercent
-
-           Start-Sleep -Seconds (60 *5)
-
+            Start-Sleep -Seconds (60*5)
+            Get-Percentage
         }
 
         $Header = New-BTHeader -Id 1 -Title "Encryption Complete!"
@@ -134,6 +142,76 @@ Function Get-BitlockerEncryptionToast {
 
     End { Get-PSSession | Remove-PSSession }
 }
+#endregion
+
+#region Toner Levels
+
+#Generate a fake dataset
+$tonerLevels = [pscustomobject]@{
+
+    Black = 100
+    Cyan = 25
+    Magenta = 66
+    Yellow = 5
+}
+
+$tonerLevels.PSObject.Members | Where-Object { $_.MemberType -eq "NoteProperty"} | ForEach-Object {
+
+    If($_.Value -lt 10) {
+
+        $Header = New-BTHeader -Id 1 -Title "Toner Alert for $($_.Name)"
+
+        New-BurntToastNotification -Header $Header -Text "$($_.Name) has $($_.Value)% Remaining!"
+
+    }
+
+}
+
+#endregion
+
+#region Tee-Object clone
+function New-ToastyOutput {
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory, Position = 0, ValueFromPipeline)]
+        [string]
+        $InputObject,
+
+        [Parameter(Mandatory)]
+        [String]
+        $Source,
+
+        [Parameter(Mandatory)]
+        [Int]$Id
+
+    )
+
+    Begin {
+        Import-Module BurntToast
+    }
+    Process {
+
+        If (Get-EventLog -LogName Application -Source $Source -ErrorAction SilentlyContinue) {
+            Write-EventLog -LogName Application -Source $Source -Message $InputObject -EventId $Id
+        }
+
+        Else {
+            New-EventLog -LogName Application -Source $Source -ErrorAction SilentlyContinue
+            Write-EventLog -LogName Application -Source $Source -Message $InputObject -EventId $Id
+        }
+
+        New-BurntToastNotification -Text "$InputObject" -Header (New-BTHeader -Id 1 -Title $Source)
+    }
+
+}
+
+$string = "Some dummy text"
+
+New-ToastyOutput -InputObject $string -Source TeeToast -Id 222
+
+Get-EventLog -LogName Application -Source TeeToast
+
 #endregion
 
 #region DotNet
@@ -183,30 +261,6 @@ Function New-DotNetToast {
   
   }
 
-
-#endregion
-
-#region Toner Levels
-
-#Generate a fake dataset
-$tonerLevels = [pscustomobject]@{
-
-    Black = 100
-    Cyan = 25
-    Magenta = 66
-    Yellow = 5
-}
-
-$tonerLevels.PSObject.Members | Where-Object { $_.MemberType -eq "NoteProperty"} | ForEach-Object {
-
-    If($_.Value -lt 10) {
-
-        $Header = New-BTHeader -Id 1 -Title "Toner Alert for $($_.Name)"
-
-        New-BurntToastNotification -Header $Header -Text "$($_.Name) has $($_.Value)% Remaining!"
-
-    }
-
-}
+  New-DotNetToast -Title 'Hellow @RTPSUG!' -Message "How did you like this demo? Questions?"
 
 #endregion
