@@ -10,21 +10,19 @@ Register-EngineEvent -SourceIdentifier Powershell.Exiting -Action {
 
     New-BurntToastNotification -Text "Whatever you were doing is done, and Powershell exited" -Header $Header -Silent
 
-
 }
 
-#You can also Register on Custom Events
-    #$Event is an automatic variable used by the -Action parameter
-    Register-EngineEvent -SourceIdentifier Test -Action { Toast -Header (New-BTHeader -Id 1 -Title "Engine Event Test") -Text "$($event.MessageData)" }
 
-    New-Event -SourceIdentifier Test -Sender PowershellTesting -MessageData "Blah"
+Register-EngineEvent -SourceIdentifier Test -Action { Toast -Header (New-BTHeader -Id 1 -Title "Engine Event Test") -Text "$($event.MessageData)" } > $null
+
+New-Event -SourceIdentifier Test -Sender PowershellTesting -MessageData "Way better than 'Write-Verbose', no?!" >$null
 
 #endregion
 
 #region Alert
 $buttonProps = @{
     Id = 1
-    Content = 'Go'
+    Content = 'View Alerting Metric'
     Arguments = 'https://play.grafana.org/d/000000052/advanced-layout?panelId=2&fullscreen&orgId=1'
 }
 
@@ -34,9 +32,9 @@ $header = New-BTHeader -Id 1 -Title 'Service Degradation Alert'
 
 $toastProps = @{
     Button = $button
-    Text = "There's an issue. Click 'Go' to View"
+    Text = "There's an issue. Click 'View Alerting Metric' to View"
     Header = $header
-    AppLogo = 'C:\users\svalding\Pictures\Toast\grafana.png'
+    AppLogo = 'C:\Github\RTPSUG7Nov\Images\grafana.png'
 }
 
 New-BurntToastNotification @toastProps
@@ -74,7 +72,7 @@ Function New-ToastReminder {
 
         Start-Job -ScriptBlock {
                         
-            $watch =  New-Object -Type System.Diagnostics.Stopwatch
+            $watch =  [System.Diagnostics.Stopwatch]::New()
             $watch.Start()
             
             $HoursToSeconds = $using:Hours * 60  * 60
@@ -85,6 +83,7 @@ Function New-ToastReminder {
 
                 Out-Null
             }
+
             $watch.Stop()
 
             $Head = New-BTHeader -ID 1 -Title $using:ReminderTitle
@@ -96,6 +95,8 @@ Function New-ToastReminder {
     End {}
 
 }
+
+New-ToastReminder -ReminderTitle "Pssssst!" -ReminderText "You need to get eggs on the way home" -Seconds 10
 #endregion
 
 #region Encryption
@@ -112,11 +113,17 @@ Function Get-BitlockerEncryptionToast {
 
     Process {
 
-        $EncryptionPercentage = Invoke-Command -Session $Session -ScriptBlock { (Get-BitLockerVolume).EncryptionPercentage }
+        Function Get-EncryptionPercent {
+        
+            $EncryptionPercentage = Invoke-Command -Session $Session -ScriptBlock { (Get-BitLockerVolume).EncryptionPercentage }
+
+        }
         
         While($EncryptionPercentage -lt 100) {
 
-           Out-Null
+           Get-EncryptionPercent
+
+           Start-Sleep -Seconds (60 *5)
 
         }
 
@@ -130,6 +137,52 @@ Function Get-BitlockerEncryptionToast {
 #endregion
 
 #region DotNet
+Function New-DotNetToast {
+    [cmdletBinding()]
+    Param(
+        
+        [Parameter(Mandatory, Position = 0)]
+        [String]
+        $Title,
+        [Parameter(Mandatory,Position = 1)]
+        [String]
+        $Message,
+        [Parameter(Position = 2)]
+        [String]
+        $Logo = "C:\Program Files\WindowsPowerShell\Modules\BurntToast\0.6.2\Images\BurntToast.png"
+       
+  
+    )
+  
+  
+    $XmlString = @"
+    <toast>
+      <visual>
+        <binding template="ToastGeneric">
+          <text>$Title</text>
+          <text>$Message</text>
+          <image src="$Logo" placement="appLogoOverride" hint-crop="circle" />
+        </binding>
+      </visual>
+      <audio src="ms-winsoundevent:Notification.Default" />
+    </toast>
+"@
+    
+    
+    $AppId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+    $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+    $null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
+    
+    $ToastXml = [Windows.Data.Xml.Dom.XmlDocument]::new()
+    
+    $ToastXml.LoadXml($XmlString)
+    
+    $Toast = [Windows.UI.Notifications.ToastNotification]::new($ToastXml)
+    
+    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($AppId).Show($Toast)
+  
+  }
+
 
 #endregion
 
